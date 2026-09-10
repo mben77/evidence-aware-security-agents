@@ -1,5 +1,7 @@
 # evidence-aware-security-agents
 
+///Originally developed in 2025, published publicly in 2026 after cleanup.
+
 Early research prototype exploring whether AI security agents can recognize when the
 available evidence is insufficient to make a reliable security decision.
 
