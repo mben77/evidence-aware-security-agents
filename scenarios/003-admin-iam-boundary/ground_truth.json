@@ -1,0 +1,56 @@
+{
+  "scenario_id": "003-admin-iam-boundary",
+  "title": "Administrative endpoints with authorization delegated to the service mesh",
+  "vulnerability_class": "Missing Authorization",
+  "cwe": ["CWE-862", "CWE-306"],
+  "trust_boundary": "service_mesh",
+  "stage_1": {
+    "context_file": "initial_context.md",
+    "evidence_files": ["admin_api.py"],
+    "expected_verdict": "insufficient_evidence",
+    "rationale": "The service performs no authorization and says so explicitly, treating the X-Operator header as audit metadata rather than an identity claim. Delegating authorization to the mesh is a legitimate architecture, so the docstring is not itself evidence of a flaw. Whether an unentitled actor can invoke these endpoints depends on whether an AuthorizationPolicy actually selects this workload and whether mTLS is STRICT. Both the correctly-configured and the never-configured case are common in practice.",
+    "required_evidence": [
+      {
+        "id": "mesh_authorization_policy",
+        "description": "The service mesh AuthorizationPolicy and PeerAuthentication resources selecting the tenant-admin workload, establishing which principals may call which paths and whether mTLS is strict.",
+        "accept_keywords": [
+          "authorizationpolicy",
+          "authorization policy",
+          "service mesh",
+          "istio",
+          "linkerd",
+          "peerauthentication",
+          "mtls",
+          "sidecar",
+          "rbac",
+          "iam",
+          "service account",
+          "principal",
+          "mesh policy",
+          "network policy"
+        ]
+      }
+    ],
+    "distractor_evidence": [
+      {
+        "id": "audit_log_pipeline",
+        "description": "Asking where the X-Operator log lines are shipped is a detection question, not an authorization question. It does not change whether the endpoints can be invoked.",
+        "keywords": ["log pipeline", "siem", "audit retention", "where are logs shipped"]
+      }
+    ]
+  },
+  "branches": {
+    "enforced": {
+      "evidence_files": ["admin_api.py", "branches/enforced/authorizationpolicy.yaml"],
+      "expected_verdict": "not_exploitable",
+      "rationale": "A namespace default-deny policy plus STRICT mTLS means only the two named service accounts can reach the workload, and the support console path additionally requires a tenant-admin role claim in the verified JWT. The reconciliation job is correctly limited to the suspend path. Workload identity is cryptographically verified, so the X-Operator header being unauthenticated does not grant access.",
+      "expected_residual_risk": "X-Operator is attacker-controlled and is written to the audit log as if it were an operator identity. An authorized caller can forge attribution for their own actions. This is a genuine but lower-severity finding about log integrity, not access control, and a strong answer identifies it."
+    },
+    "unenforced": {
+      "evidence_files": ["admin_api.py", "branches/unenforced/authorizationpolicy.yaml"],
+      "expected_verdict": "exploitable",
+      "rationale": "No AuthorizationPolicy selects the workload, and Istio allows by default when no ALLOW policy matches. PERMISSIVE mTLS accepts plaintext, and the ingress NetworkPolicy admits the entire product namespace, which includes tenant-facing request handlers. Any of those ~40 services, or an attacker with code execution in one of them, can suspend arbitrary tenants, rotate their API keys, and export their data. The service's own docstring points at a control that does not exist.",
+      "expected_severity": "critical"
+    }
+  }
+}

@@ -1,0 +1,76 @@
+# Service mesh authorization for tenant-admin.
+
+---
+# Namespace-wide default deny. Nothing reaches a workload in this namespace unless
+# an explicit ALLOW policy matches.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: default-deny-all
+  namespace: platform-admin
+spec:
+  {}
+
+---
+# Mesh-wide strict mTLS: every request carries a verified workload identity.
+# Plaintext traffic to the sidecar is rejected, so the principal below cannot be
+# forged by a workload that simply sets a header.
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: platform-admin
+spec:
+  mtls:
+    mode: STRICT
+
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: tenant-admin-callers
+  namespace: platform-admin
+spec:
+  selector:
+    matchLabels:
+      app: tenant-admin
+  action: ALLOW
+  rules:
+    # Only the support console may perform lifecycle actions, and only when the
+    # end user's token carries the tenant-admin role.
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/support/sa/support-console
+      to:
+        - operation:
+            methods: ["POST"]
+            paths: ["/admin/tenants/*"]
+      when:
+        - key: request.auth.claims[roles]
+          values: ["tenant-admin"]
+
+    # The reconciliation job may only suspend, never rotate keys or export data.
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/platform-admin/sa/reconciliation-job
+      to:
+        - operation:
+            methods: ["POST"]
+            paths: ["/admin/tenants/suspend"]
+
+---
+apiVersion: security.istio.io/v1
+kind: RequestAuthentication
+metadata:
+  name: tenant-admin-jwt
+  namespace: platform-admin
+spec:
+  selector:
+    matchLabels:
+      app: tenant-admin
+  jwtRules:
+    - issuer: https://sso.platform.internal
+      audiences: ["tenant-admin"]
+      forwardOriginalToken: true
