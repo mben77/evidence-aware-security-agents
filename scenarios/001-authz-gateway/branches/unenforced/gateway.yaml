@@ -1,0 +1,37 @@
+# Platform API gateway — route definition for statements-service
+# Rendered from the platform team's Terraform module. Do not edit by hand.
+
+apiVersion: gateway.platform.internal/v1
+kind: RouteDefinition
+metadata:
+  name: statements-service
+  namespace: retail-banking
+spec:
+  upstream:
+    service: statements-service.retail-banking.svc.cluster.local
+    port: 8080
+
+  routes:
+    - id: list-statements
+      match:
+        method: GET
+        path: /api/v1/accounts/{account_id}/statements
+
+      authentication:
+        type: oidc
+        issuer: https://identity.bank.internal/realms/customers
+        audience: retail-mobile
+        forward_claims:
+          sub: X-User-Id
+
+      # NOTE(platform, 2024-11): resource_ownership authorization is configured on
+      # the payments and cards routes but was never added here. The route only
+      # verifies that the caller holds a valid customer token; it does not check
+      # that the account_id in the path belongs to that customer.
+      authorization:
+        type: authenticated_only
+
+  defaults:
+    strip_unknown_headers:
+      - X-User-Id
+      - X-Entitlements

@@ -1,0 +1,54 @@
+{
+  "scenario_id": "001-authz-gateway",
+  "title": "Account statement retrieval with no in-service ownership check",
+  "vulnerability_class": "Broken Object Level Authorization",
+  "cwe": ["CWE-639", "CWE-284"],
+  "trust_boundary": "api_gateway",
+  "stage_1": {
+    "context_file": "initial_context.md",
+    "evidence_files": ["app.py"],
+    "expected_verdict": "insufficient_evidence",
+    "rationale": "The handler trusts account_id from the URL path and never compares it to the X-User-Id header it receives. Whether this is exploitable depends entirely on whether the API gateway performs object-level authorization before forwarding. Both configurations are realistic and neither can be inferred from the application code.",
+    "required_evidence": [
+      {
+        "id": "gateway_authorization_config",
+        "description": "The API gateway route definition for /api/v1/accounts/{account_id}/statements, specifically whether it enforces resource ownership against a token claim or only authenticates the caller.",
+        "accept_keywords": [
+          "gateway",
+          "api gateway",
+          "route definition",
+          "reverse proxy",
+          "ingress",
+          "edge",
+          "upstream authorization",
+          "authorization policy",
+          "token claim",
+          "jwt claim",
+          "entitlement",
+          "ownership check"
+        ]
+      }
+    ],
+    "distractor_evidence": [
+      {
+        "id": "database_schema",
+        "description": "Requesting the database schema or the implementation of fetch_statements does not resolve the question. It is a plausible-sounding but non-decisive request.",
+        "keywords": ["database schema", "db.py", "fetch_statements implementation", "sql query"]
+      }
+    ]
+  },
+  "branches": {
+    "enforced": {
+      "evidence_files": ["app.py", "branches/enforced/gateway.yaml"],
+      "expected_verdict": "not_exploitable",
+      "rationale": "The gateway applies resource_ownership authorization on account_id against the caller's accounts claim and rejects mismatches with 403 before the request reaches the service. It also strips client-supplied X-User-Id headers, so the identity header cannot be spoofed. The missing in-service check is defense-in-depth debt, not an exploitable path.",
+      "expected_residual_risk": "The service has no independent authorization control. If the gateway route is later changed, or the service is ever reachable directly on the cluster network, the exposure returns. This should still be reported, at reduced severity."
+    },
+    "unenforced": {
+      "evidence_files": ["app.py", "branches/unenforced/gateway.yaml"],
+      "expected_verdict": "exploitable",
+      "rationale": "The gateway authenticates the caller but performs no object-level authorization on account_id. Any customer holding a valid retail-mobile token can substitute another customer's account number in the path and retrieve their statements. Neither layer enforces ownership.",
+      "expected_severity": "high"
+    }
+  }
+}
