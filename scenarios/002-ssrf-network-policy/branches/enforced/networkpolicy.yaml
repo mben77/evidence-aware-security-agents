@@ -1,0 +1,68 @@
+# Egress controls for the webhook-preview workload.
+# Applied by the platform team; the product team cannot modify this namespace policy.
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: webhook-preview-egress
+  namespace: integrations
+spec:
+  podSelector:
+    matchLabels:
+      app: webhook-preview
+  policyTypes:
+    - Egress
+  egress:
+    # DNS resolution only, to the cluster resolver.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+
+    # All outbound customer traffic must traverse the egress proxy. The pod has no
+    # route to any other in-cluster or link-local destination.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: egress
+          podSelector:
+            matchLabels:
+              app: egress-proxy
+      ports:
+        - protocol: TCP
+          port: 3128
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: egress-proxy-acl
+  namespace: egress
+data:
+  # The proxy refuses to connect to private, loopback, and link-local ranges.
+  # 169.254.169.254 (cloud instance metadata) is inside 169.254.0.0/16.
+  denied_cidrs: |
+    10.0.0.0/8
+    172.16.0.0/12
+    192.168.0.0/16
+    127.0.0.0/8
+    169.254.0.0/16
+    ::1/128
+    fc00::/7
+    fe80::/10
+  # Redirects are re-evaluated against the ACL on every hop.
+  reevaluate_on_redirect: "true"
+
+---
+# Node pool configuration excerpt (Terraform state, read-only here)
+# instance_metadata:
+#   http_endpoint             = "enabled"
+#   http_tokens               = "required"   # IMDSv2 only
+#   http_put_response_hop_limit = 1          # unreachable from a pod network namespace

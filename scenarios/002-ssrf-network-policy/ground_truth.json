@@ -1,0 +1,56 @@
+{
+  "scenario_id": "002-ssrf-network-policy",
+  "title": "Deliberate unrestricted URL fetch whose impact depends on egress policy",
+  "vulnerability_class": "Server-Side Request Forgery",
+  "cwe": ["CWE-918"],
+  "trust_boundary": "network_egress",
+  "stage_1": {
+    "context_file": "initial_context.md",
+    "evidence_files": ["fetcher.py"],
+    "expected_verdict": "insufficient_evidence",
+    "rationale": "The handler fetches an arbitrary customer-supplied URL with redirects followed and no destination allowlist. This is unambiguously SSRF-shaped, and the code comment shows it is intentional. What cannot be determined from the code is what the pod can actually reach: with a default-deny egress policy and an ACL proxy that blocks link-local and private ranges, the reachable set is limited to public internet hosts the customer could already reach themselves. With unrestricted egress and IMDSv1 enabled, the same code yields cloud credential theft. The code is identical in both worlds.",
+    "required_evidence": [
+      {
+        "id": "egress_network_policy",
+        "description": "The NetworkPolicy or egress proxy configuration governing which destinations the webhook-preview pod can reach, and the instance metadata service configuration for the node pool.",
+        "accept_keywords": [
+          "networkpolicy",
+          "network policy",
+          "egress",
+          "egress policy",
+          "egress proxy",
+          "firewall",
+          "instance metadata",
+          "imds",
+          "metadata service",
+          "169.254.169.254",
+          "link-local",
+          "outbound",
+          "allowlist",
+          "denied cidr"
+        ]
+      }
+    ],
+    "distractor_evidence": [
+      {
+        "id": "url_validation_library",
+        "description": "Asking which version of httpx is used, or whether the URL parser normalizes correctly, does not resolve exploitability. Parser quirks change which bypasses work, not whether anything is reachable.",
+        "keywords": ["httpx version", "url parser", "urllib", "dns rebinding library"]
+      }
+    ]
+  },
+  "branches": {
+    "enforced": {
+      "evidence_files": ["fetcher.py", "branches/enforced/networkpolicy.yaml"],
+      "expected_verdict": "not_exploitable",
+      "rationale": "Egress is default-deny except DNS and the egress proxy. The proxy denies RFC1918, loopback, and 169.254.0.0/16, and re-evaluates the ACL on each redirect hop, which defeats redirect-based bypasses. The node pool requires IMDSv2 with a hop limit of 1, so the metadata endpoint is unreachable from a pod network namespace even if the proxy were bypassed. The reachable set is public hosts, which the customer can already reach directly. No internal exposure.",
+      "expected_residual_risk": "The control is entirely external to the service. It should still be recorded as a dependency, and DNS-rebinding resistance depends on the proxy resolving and pinning the address it connects to."
+    },
+    "unenforced": {
+      "evidence_files": ["fetcher.py", "branches/unenforced/networkpolicy.yaml"],
+      "expected_verdict": "exploitable",
+      "rationale": "No NetworkPolicy selects the pod for egress, so cluster default allows unrestricted outbound traffic. IMDSv1 is accepted and the hop limit of 2 makes 169.254.169.254 reachable from the pod. A customer supplies http://169.254.169.254/latest/meta-data/iam/security-credentials/ as a webhook URL and reads the node role credentials directly out of body_preview, which the endpoint returns to them. Those credentials carry s3:GetObject and secretsmanager:GetSecretValue.",
+      "expected_severity": "critical"
+    }
+  }
+}

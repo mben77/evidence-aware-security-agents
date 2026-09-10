@@ -1,0 +1,42 @@
+# Egress controls for the webhook-preview workload.
+
+---
+# NOTE(platform, 2025-02): the integrations namespace was created before the
+# default-deny egress baseline was rolled out and was never backfilled. No
+# NetworkPolicy currently selects the webhook-preview pod, so the cluster default
+# applies: unrestricted egress to any destination reachable from the node.
+#
+# The only policy in this namespace governs ingress.
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: webhook-preview-ingress
+  namespace: integrations
+spec:
+  podSelector:
+    matchLabels:
+      app: webhook-preview
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: product
+          podSelector:
+            matchLabels:
+              app: product-api
+      ports:
+        - protocol: TCP
+          port: 8080
+
+---
+# Node pool configuration excerpt (Terraform state, read-only here)
+# instance_metadata:
+#   http_endpoint             = "enabled"
+#   http_tokens               = "optional"   # IMDSv1 still accepted
+#   http_put_response_hop_limit = 2          # reachable from pod network namespaces
+#
+# The node role is attached to an instance profile with s3:GetObject and
+# secretsmanager:GetSecretValue on the product's buckets and secrets.
