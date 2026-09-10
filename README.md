@@ -3,9 +3,11 @@
 Early research prototype exploring whether AI security agents can recognize when the
 available evidence is insufficient to make a reliable security decision.
 
-The project is motivated by patterns I've encountered during real-world penetration
-testing and application security assessments, where code alone is often insufficient
-to determine exploitability.
+The project is motivated by patterns I've encountered repeatedly over years of
+penetration testing and application security assessments, where code alone is often
+insufficient to determine exploitability. The observation is old; this attempt to
+turn it into something measurable is recent, and the repository is new because the
+benchmark is what I started building, not the problem it addresses.
 
 ## The problem
 
